@@ -9,7 +9,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Baixar os arquivos do repositório
+      - name: Baixar os arquivos
         uses: actions/checkout@v4
 
       - name: Preparar Python
@@ -17,10 +17,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Instalar dependências
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install pyinstaller
+      - name: Instalar PyInstaller
+        run: python -m pip install pyinstaller
 
       - name: Gerar executável
         run: |
@@ -37,5 +35,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Instalador-Rebalanceamento-Carteira
-          path: Output/Instalador_Rebalanceamento_Carteira.exe
+          path: installer/Instalador_Rebalanceamento_Carteira.exe
           if-no-files-found: error
