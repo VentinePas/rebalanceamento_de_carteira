@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Ambientes virtuais
+.venv/
+venv/
+.build_venv/
+
+# PyInstaller
+build/
+dist/
+
+# Instalador gerado
+installer/
+
+# Arquivos temporários
+*.tmp
+.DS_Store

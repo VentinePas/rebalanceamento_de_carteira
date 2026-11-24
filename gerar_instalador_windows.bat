@@ -30,7 +30,7 @@ if errorlevel 1 goto erro
 
 echo.
 echo Gerando o executavel do programa...
-"%PYTHON%" -m PyInstaller --clean --noconfirm --onefile --windowed --name RebalanceamentoCarteira rebalanceamento_carteira_gui.py
+"%PYTHON%" -m PyInstaller --clean --noconfirm --onefile --windowed --name RebalanceamentoCarteira main.py
 if errorlevel 1 goto erro
 
 set "ISCC="

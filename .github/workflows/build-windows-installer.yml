@@ -22,7 +22,7 @@ jobs:
 
       - name: Gerar executável
         run: |
-          python -m PyInstaller --clean --noconfirm --onefile --windowed --name RebalanceamentoCarteira "Rebalanceamento de Carteira.py"
+          python -m PyInstaller --clean --noconfirm --onefile --windowed --name RebalanceamentoCarteira "main.py"
 
       - name: Instalar Inno Setup
         run: choco install innosetup --yes --no-progress
