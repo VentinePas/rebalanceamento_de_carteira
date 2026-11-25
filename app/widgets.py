@@ -1,3 +1,4 @@
+
 """Componentes reutilizáveis da interface Tkinter."""
 
 import tkinter as tk
@@ -109,9 +110,12 @@ class TabelaResultado(tk.Frame):
 
         self.canvas = tk.Canvas(self, width=10, height=10, bg=TEMA["painel"], highlightthickness=0, bd=0)
         self.barra = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=self.barra.set)
+        self.barra_horizontal = ttk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
+        self.canvas.configure(yscrollcommand=self.barra.set, xscrollcommand=self.barra_horizontal.set)
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.barra.grid(row=0, column=1, sticky="ns")
+        self.barra_horizontal.grid(row=1, column=0, sticky="ew")
+        self.barra_horizontal.grid_remove()
 
         self.interno = tk.Frame(self.canvas, bg=TEMA["painel"])
         self._janela = self.canvas.create_window(0, 0, anchor="nw", window=self.interno)
@@ -128,23 +132,34 @@ class TabelaResultado(tk.Frame):
     # ----- rolagem -----
     def _ao_mudar_conteudo(self, _evento=None):
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        self._atualizar_barra()
+        self._atualizar_barras()
 
     def _ao_mudar_canvas(self, evento):
-        self.canvas.itemconfigure(self._janela, width=evento.width)
-        self._atualizar_barra()
+        # Preserva a largura natural das colunas. Se ela exceder a área visível,
+        # a barra horizontal permite acessar todas as células sem cortá-las.
+        largura_conteudo = max(evento.width, self.interno.winfo_reqwidth())
+        self.canvas.itemconfigure(self._janela, width=largura_conteudo)
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self._atualizar_barras()
 
-    def _atualizar_barra(self):
-        """Mostra a barra de rolagem só quando as linhas não cabem."""
+    def _atualizar_barras(self):
+        """Mostra as barras somente quando o conteúdo excede a área visível."""
         if self.interno.winfo_reqheight() > self.canvas.winfo_height():
             self.barra.grid()
         else:
             self.barra.grid_remove()
             self.canvas.yview_moveto(0)
 
+        if self.interno.winfo_reqwidth() > self.canvas.winfo_width():
+            self.barra_horizontal.grid()
+        else:
+            self.barra_horizontal.grid_remove()
+            self.canvas.xview_moveto(0)
+
     def _vincular_rolagem(self, widget):
         for evento in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
             widget.bind(evento, self._rolar)
+        widget.bind("<Shift-MouseWheel>", self._rolar_horizontal)
 
     def _rolar(self, evento):
         if not self.barra.winfo_ismapped():
@@ -152,11 +167,17 @@ class TabelaResultado(tk.Frame):
         direcao = -1 if (evento.num == 4 or evento.delta > 0) else 1
         self.canvas.yview_scroll(direcao * 2, "units")
 
+    def _rolar_horizontal(self, evento):
+        if not self.barra_horizontal.winfo_ismapped():
+            return
+        direcao = -1 if evento.delta > 0 else 1
+        self.canvas.xview_scroll(direcao * 2, "units")
+
     # ----- conteúdo -----
     def _celula(self, linha, coluna, texto, fundo, cor=None, negrito=False):
         rotulo = tk.Label(
             self.interno, text=texto, bg=fundo, fg=cor or TEMA["texto"],
-            anchor=self.ANCORAS[coluna], padx=14, pady=5,
+            anchor=self.ANCORAS[coluna], padx=8, pady=5,
             font=(self.familia, 10, "bold" if negrito else "normal"),
         )
         rotulo.grid(row=linha, column=coluna, sticky="nsew")
@@ -186,3 +207,4 @@ class TabelaResultado(tk.Frame):
                 self._celula(i, coluna, texto, fundo, cor)
         for coluna, texto in enumerate(total):
             self._celula(len(linhas) + 1, coluna, texto, TEMA["total"], negrito=True)
+
