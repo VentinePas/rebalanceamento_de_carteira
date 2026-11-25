@@ -1,3 +1,4 @@
+
 """Janela principal e fluxo de interação do aplicativo."""
 
 import json
@@ -34,10 +35,32 @@ class AplicacaoRebalanceamento:
         self.root = root
         self.root.title("Rebalanceamento de Carteira")
         self.root.configure(bg=TEMA["fundo"])
-        largura = min(1320, self.root.winfo_screenwidth() - 60)
-        altura = min(1000, self.root.winfo_screenheight() - 60)
-        self.root.geometry(f"{largura}x{altura}")
-        self.root.minsize(1100, 640)
+
+        # O Tk informa seu fator de escala de fonte conforme a configuração do
+        # sistema. Espaçamentos e altura inicial dos campos acompanham esse fator;
+        # as fontes continuam respeitando a escala escolhida pelo usuário.
+        try:
+            escala_tk = float(self.root.tk.call("tk", "scaling"))
+        except (tk.TclError, TypeError, ValueError):
+            escala_tk = 1.333
+        self.fator_densidade = min(1.0, 1.333 / max(1.0, escala_tk))
+        self.espacamento_layout = max(4, int(8 * self.fator_densidade))
+        self.altura_campos = max(1, int(3 * self.fator_densidade))
+        self.altura_minima_resultados = max(180, int(200 * self.fator_densidade))
+        self.margem_entrada = max(6, int(10 * self.fator_densidade))
+        self.margem_cartao = max(6, int(10 * self.fator_densidade))
+        self.margem_rodape = max(5, int(8 * self.fator_densidade))
+
+        # A geometria inicial deixa margem para as áreas reservadas pelo sistema
+        # operacional (por exemplo, a barra de tarefas do Windows). O gerenciador
+        # de janelas continua livre para maximizar e reposicionar a aplicação.
+        largura_tela = max(1, self.root.winfo_screenwidth())
+        altura_tela = max(1, self.root.winfo_screenheight())
+        largura = min(1320, max(760, largura_tela - 80))
+        altura = min(900, max(520, altura_tela - 80))
+        pos_x = max(0, (largura_tela - largura) // 2)
+        pos_y = max(0, (altura_tela - altura) // 2)
+        self.root.geometry(f"{largura}x{altura}+{pos_x}+{pos_y}")
 
         self.familia = escolher_familia(root)
         self.configurar_estilo()
@@ -51,11 +74,15 @@ class AplicacaoRebalanceamento:
         fundo, painel, fonte = TEMA["fundo"], TEMA["painel"], self.familia
 
         principal = tk.Frame(root, bg=fundo)
-        principal.pack(fill="both", expand=True, padx=18, pady=14)
+        principal.pack(fill="both", expand=True, padx=14, pady=self.espacamento_layout)
+        principal.columnconfigure(0, weight=1)
+        # Somente a linha dos resultados recebe o espaço vertical excedente.
+        # A altura mínima evita que o painel seja reduzido ao título apenas.
+        principal.rowconfigure(3, weight=1, minsize=self.altura_minima_resultados)
 
         # ---------- Cabeçalho ----------
         cabecalho = tk.Frame(principal, bg=fundo)
-        cabecalho.pack(fill="x")
+        cabecalho.grid(row=0, column=0, sticky="ew")
         criar_icone(cabecalho, "logo", 52).pack(side="left", padx=(4, 14))
         titulos = tk.Frame(cabecalho, bg=fundo)
         titulos.pack(side="left")
@@ -76,7 +103,7 @@ class AplicacaoRebalanceamento:
         self.valor_final_var = tk.StringVar(value="—")
 
         cartoes = tk.Frame(principal, bg=fundo)
-        cartoes.pack(fill="x", pady=(14, 0))
+        cartoes.grid(row=1, column=0, sticky="ew", pady=(self.espacamento_layout, 0))
         for coluna in range(3):
             cartoes.columnconfigure(coluna, weight=1, uniform="cartao")
         self.criar_cartao(cartoes, 0, "carteira", self.titulo_atual_var, self.valor_atual_var,
@@ -87,8 +114,8 @@ class AplicacaoRebalanceamento:
                           TEMA["cartao"], TEMA["borda"])
 
         # ---------- Entradas ----------
-        painel_entrada = Painel(principal, painel, TEMA["borda"])
-        painel_entrada.pack(fill="x", pady=(14, 0))
+        painel_entrada = Painel(principal, painel, TEMA["borda"], margem=self.margem_entrada)
+        painel_entrada.grid(row=2, column=0, sticky="ew", pady=(self.espacamento_layout, 0))
         entrada = painel_entrada.corpo
 
         campos = tk.Frame(entrada, bg=painel)
@@ -129,26 +156,28 @@ class AplicacaoRebalanceamento:
             campo.edit_modified(False)
             campo.bind("<<Modified>>", self.ao_modificar_texto)
 
+        # Mantém os controles em duas linhas para que não ultrapassem a largura
+        # disponível em escalas de exibição maiores.
         linha_aporte = tk.Frame(entrada, bg=painel)
-        linha_aporte.pack(fill="x", pady=(14, 0))
+        linha_aporte.pack(fill="x", pady=(self.espacamento_layout, 0))
         tk.Label(linha_aporte, text="Aporte disponível (R$):", bg=painel, fg=TEMA["rotulo"],
                  font=(fonte, 10)).pack(side="left")
         self.aporte_var = tk.StringVar(value="500")
         self.aporte_entrada = ttk.Entry(linha_aporte, textvariable=self.aporte_var, width=16,
                                         style="Escuro.TEntry", font=(fonte, 10))
-        self.aporte_entrada.pack(side="left", padx=(10, 14))
+        self.aporte_entrada.pack(side="left", padx=(8, 10))
         self.aporte_entrada.bind("<Return>", lambda _evento: self.calcular())
 
         ttk.Button(linha_aporte, text="▶  Calcular", style="Primario.TButton", cursor="hand2",
-                   command=self.calcular).pack(side="left", padx=(0, 10))
-        tk.Frame(linha_aporte, bg=TEMA["borda"], width=1, height=26).pack(side="left", padx=(0, 10))
+                   command=self.calcular).pack(side="left", padx=(0, 8))
+        tk.Frame(linha_aporte, bg=TEMA["borda"], width=1, height=24).pack(side="left", padx=(0, 8))
         ttk.Button(linha_aporte, text="Ideal", style="Secundario.TButton", cursor="hand2",
-                   command=self.calcular_ideal).pack(side="left", padx=(0, 10))
+                   command=self.calcular_ideal).pack(side="left", padx=(0, 8))
         ttk.Button(linha_aporte, text="Limpar resultado", style="Secundario.TButton", cursor="hand2",
                    command=self.limpar_resultado).pack(side="left")
 
         linha_vendas = tk.Frame(entrada, bg=painel)
-        linha_vendas.pack(fill="x", pady=(10, 0))
+        linha_vendas.pack(fill="x", pady=(max(3, self.espacamento_layout - 2), 0))
         self.vender_var = tk.BooleanVar(value=True)
         self.check_vender = ttk.Checkbutton(
             linha_vendas,
@@ -160,7 +189,7 @@ class AplicacaoRebalanceamento:
         )
         self.check_vender.pack(side="left")
         tk.Label(linha_vendas, text="Desvio para venda (%):", bg=painel, fg=TEMA["rotulo"],
-                 font=(fonte, 10)).pack(side="left", padx=(24, 10))
+                 font=(fonte, 10)).pack(side="left", padx=(18, 8))
         self.desvio_venda_var = tk.StringVar(value="15")
         self.desvio_venda_entrada = ttk.Entry(
             linha_vendas,
@@ -172,23 +201,36 @@ class AplicacaoRebalanceamento:
         )
         self.desvio_venda_entrada.pack(side="left")
 
-        # ---------- Rodapé (empacotado antes do resultado para nunca ser cortado) ----------
-        rodape = Painel(principal, painel, TEMA["borda"], raio=14, margem=12)
-        rodape.pack(side="bottom", fill="x", pady=(14, 0))
-        criar_icone(rodape.corpo, "info", 26).pack(side="left", padx=(0, 12))
-        tk.Label(
-            rodape.corpo, text="Desvio positivo = acima do ideal\nDesvio negativo = abaixo do ideal",
-            bg=painel, fg=TEMA["suave"], font=(fonte, 9), justify="right", anchor="e",
-        ).pack(side="right", padx=(16, 0))
+        # ---------- Rodapé ----------
+        rodape = Painel(principal, painel, TEMA["borda"], raio=14, margem=self.margem_rodape)
+        rodape.grid(row=4, column=0, sticky="ew", pady=(self.espacamento_layout, 0))
+        icone_info = criar_icone(rodape.corpo, "info", 26)
+        icone_info.pack(side="left", padx=(0, 12))
+        fonte_rodape = max(6, int(9 * self.fator_densidade))
+        legenda_desvio = tk.Label(
+            rodape.corpo, text="Desvio: + acima do ideal  |  − abaixo do ideal",
+            bg=painel, fg=TEMA["suave"], font=(fonte, fonte_rodape), justify="right", anchor="e",
+        )
+        legenda_desvio.pack(side="right", padx=(12, 0))
         self.detalhes_resultado_var = tk.StringVar(value="")
-        tk.Label(
+        self.detalhes_resultado_label = tk.Label(
             rodape.corpo, textvariable=self.detalhes_resultado_var, bg=painel, fg=TEMA["rotulo"],
-            font=(fonte, 9), justify="left", anchor="w", wraplength=880, height=3,
-        ).pack(side="left")
+            font=(fonte, fonte_rodape), justify="left", anchor="w", wraplength=600,
+        )
+        self.detalhes_resultado_label.pack(side="left", fill="x", expand=True)
+
+        def ajustar_largura_detalhes(evento):
+            # Considera o espaço ocupado pelo ícone e pela legenda lateral.
+            largura_disponivel = (
+                evento.width - icone_info.winfo_width() - legenda_desvio.winfo_reqwidth() - 44
+            )
+            self.detalhes_resultado_label.configure(wraplength=max(120, largura_disponivel))
+
+        rodape.corpo.bind("<Configure>", ajustar_largura_detalhes, add="+")
 
         # ---------- Resultado ----------
         painel_resultado = Painel(principal, painel, TEMA["borda"], expandir=True)
-        painel_resultado.pack(fill="both", expand=True, pady=(14, 0))
+        painel_resultado.grid(row=3, column=0, sticky="nsew", pady=(self.espacamento_layout, 0))
         resultado = painel_resultado.corpo
 
         titulo = tk.Frame(resultado, bg=painel)
@@ -202,13 +244,48 @@ class AplicacaoRebalanceamento:
 
         area = tk.Frame(resultado, bg=painel)
         area.pack(fill="both", expand=True)
+        area.rowconfigure(0, weight=1)
+        area.columnconfigure(0, weight=2, minsize=300)
+        area.columnconfigure(1, weight=3, minsize=420)
 
-        # O gráfico tem espaço próprio e fixo à esquerda: a tabela nunca invade essa área.
-        self.grafico = tk.Canvas(area, width=480, height=270, bg=painel, highlightthickness=0, bd=0)
-        self.grafico.pack(side="left", anchor="w", padx=(0, 14))
+        # Gráfico e tabela dividem a largura disponível proporcionalmente.
+        # O desenho do gráfico é recalculado quando o painel muda de tamanho.
+        self._dados_grafico = ([], [])
+        self.grafico = tk.Canvas(area, width=360, height=220, bg=painel,
+                                 highlightthickness=0, bd=0)
+        self.grafico.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        self.grafico.bind("<Configure>", self._ao_redimensionar_grafico)
 
         self.resultado = TabelaResultado(area, fonte)
-        self.resultado.pack(side="left", fill="both", expand=True)
+        self.resultado.grid(row=0, column=1, sticky="nsew")
+
+        # Ajusta o tamanho mínimo ao espaço solicitado pelos componentes,
+        # limitado à dimensão da tela para não ultrapassar a área disponível.
+        # Os painéis de conteúdo próprio atualizam sua altura após a montagem.
+        # Medimos novamente antes de definir o mínimo real da janela.
+        self.root.update_idletasks()
+        painel_entrada._medir_inicial()
+        rodape._medir_inicial()
+        self.root.update_idletasks()
+        def ajustar_tamanho_minimo():
+            self.root.update_idletasks()
+            largura_minima = max(
+                1000,
+                principal.winfo_reqwidth() + 28,
+                painel_entrada.corpo.winfo_reqwidth() + 2 * self.margem_entrada + 28,
+            )
+            # Mantém espaço para cabeçalho, entrada, rodapé e uma área útil
+            # de resultados; o limite da tela prevalece em monitores menores.
+            altura_minima = max(680, principal.winfo_reqheight() + 20)
+            self.root.minsize(
+                min(largura_minima, max(760, largura_tela - 40)),
+                min(altura_minima, max(500, altura_tela - 80)),
+            )
+
+        ajustar_tamanho_minimo()
+        # Uma segunda medição após a primeira distribuição dos widgets captura
+        # eventuais ajustes de fonte e quebra de texto feitos pelo gerenciador.
+        self.root.after(100, ajustar_tamanho_minimo)
 
         # Garante o salvamento final ao fechar a janela.
         self.root.protocol("WM_DELETE_WINDOW", self.ao_fechar)
@@ -225,7 +302,7 @@ class AplicacaoRebalanceamento:
             "Escuro.TEntry",
             fieldbackground=TEMA["campo"], foreground=TEMA["texto"], insertcolor=TEMA["texto"],
             bordercolor=TEMA["campo_borda"], lightcolor=TEMA["campo_borda"], darkcolor=TEMA["campo_borda"],
-            padding=(8, 6),
+            padding=(max(5, int(8 * self.fator_densidade)), max(3, int(6 * self.fator_densidade))),
         )
         estilo.map(
             "Escuro.TEntry",
@@ -246,7 +323,9 @@ class AplicacaoRebalanceamento:
                 f"{nome}.TButton",
                 background=base, foreground=texto, bordercolor=borda,
                 lightcolor=base, darkcolor=base, focuscolor=base,
-                relief="flat", padding=(18, 8), font=(self.familia, 10, "bold"),
+                relief="flat",
+                padding=(max(10, int(18 * self.fator_densidade)), max(4, int(8 * self.fator_densidade))),
+                font=(self.familia, 10, "bold"),
             )
             estilo.map(
                 f"{nome}.TButton",
@@ -283,7 +362,7 @@ class AplicacaoRebalanceamento:
         Recebe os textos do título e do valor por variáveis que podem ser
         atualizadas posteriormente, além das cores e do ícone do cartão.
         """
-        cartao = Painel(pai, fundo, borda, raio=14, margem=14)
+        cartao = Painel(pai, fundo, borda, raio=14, margem=self.margem_cartao)
         cartao.grid(row=0, column=coluna, sticky="ew",
                     padx=(0 if coluna == 0 else 7, 0 if coluna == 2 else 7))
         criar_icone(cartao.corpo, icone, 44).pack(side="left", padx=(0, 14))
@@ -511,7 +590,7 @@ class AplicacaoRebalanceamento:
                  font=(self.familia, 11, "bold")).pack(side="left")
 
         texto = tk.Text(
-            quadro, height=8, width=10, wrap="word", undo=True,
+            quadro, height=self.altura_campos, width=10, wrap="word", undo=True,
             bg=TEMA["campo"], fg=TEMA["texto"], insertbackground=TEMA["texto"],
             selectbackground="#245B94", selectforeground="#FFFFFF",
             relief="flat", bd=0, padx=10, pady=8, font=(self.familia, 10),
@@ -543,16 +622,33 @@ class AplicacaoRebalanceamento:
         return texto + "…"
 
     def atualizar_grafico(self, nomes, valores):
-        """Mostra o gráfico de rosca com os valores finais do resultado."""
+        """Guarda os dados e redesenha o gráfico conforme o tamanho disponível."""
+        self._dados_grafico = (list(nomes), list(valores))
+        self._desenhar_grafico()
+
+    def _ao_redimensionar_grafico(self, _evento=None):
+        """Mantém o gráfico legível quando a janela ou o painel de resultados muda."""
+        if self._dados_grafico[0]:
+            self._desenhar_grafico()
+
+    def _desenhar_grafico(self):
+        """Desenha o gráfico de rosca usando as dimensões reais do Canvas."""
         c = self.grafico
         c.delete("all")
+        nomes, valores = self._dados_grafico
         total = sum(valores)
         if not nomes or total <= 0:
             return
 
+        largura = max(1, c.winfo_width())
+        altura = max(1, c.winfo_height())
+        if largura <= 1 or altura <= 1:
+            return
+
         fundo = TEMA["painel"]
-        largura, altura = int(c["width"]), int(c["height"])
-        cx, cy, raio, espessura = 104, altura // 2, 92, 32
+        raio = max(34, min(82, int(min(altura * 0.36, largura * 0.21))))
+        espessura = max(12, min(28, int(raio * 0.34)))
+        cx, cy = raio + 14, altura // 2
         raio_arco = raio - espessura / 2
         bbox = (cx - raio_arco, cy - raio_arco, cx + raio_arco, cy + raio_arco)
 
@@ -583,29 +679,33 @@ class AplicacaoRebalanceamento:
 
         # Texto central (a fonte diminui se o total for muito grande).
         texto_total = moeda(total)
-        tamanho = 13
-        while tamanho > 8 and tkfont.Font(
+        tamanho = max(6, int(13 * self.fator_densidade))
+        while tamanho > 5 and tkfont.Font(
             family=self.familia, size=tamanho, weight="bold"
         ).measure(texto_total) > 2 * (raio - espessura) - 14:
             tamanho -= 1
         c.create_text(cx, cy - 9, text=texto_total, fill=TEMA["texto"],
                       font=(self.familia, tamanho, "bold"))
-        c.create_text(cx, cy + 12, text="Total", fill=TEMA["suave"], font=(self.familia, 10))
+        tamanho_legenda = max(5, int(10 * self.fator_densidade))
+        c.create_text(cx, cy + 12, text="Total", fill=TEMA["suave"],
+                      font=(self.familia, tamanho_legenda))
 
-        # Legenda à direita.
-        fonte = tkfont.Font(family=self.familia, size=10)
-        x_ponto, x_nome, x_pct = 226, 244, largura - 12
-        largura_nome = x_pct - 54 - x_nome
+        # Legenda ocupa o espaço restante; nomes longos recebem reticências.
+        fonte = tkfont.Font(family=self.familia, size=tamanho_legenda)
+        x_ponto = cx + raio + 16
+        x_nome = x_ponto + 14
+        x_pct = largura - 10
+        largura_nome = max(4, x_pct - 48 - x_nome)
         n = len(nomes)
-        passo = min(28, (altura - 24) / n)
+        passo = min(26, max(12, (altura - 12) / max(1, n)))
         y = (altura - passo * (n - 1)) / 2
         for i, (nome, valor) in enumerate(zip(nomes, valores)):
             cor = CORES_GRAFICO[i % len(CORES_GRAFICO)]
-            c.create_oval(x_ponto - 6, y - 6, x_ponto + 6, y + 6, fill=cor, outline=cor)
+            c.create_oval(x_ponto - 5, y - 5, x_ponto + 5, y + 5, fill=cor, outline=cor)
             c.create_text(x_nome, y, text=self._cortar_texto(nome, fonte, largura_nome), anchor="w",
-                          fill=TEMA["texto"], font=(self.familia, 10))
+                          fill=TEMA["texto"], font=(self.familia, tamanho_legenda))
             c.create_text(x_pct, y, text=formatar_percentual(valor / total), anchor="e",
-                          fill=TEMA["texto"], font=(self.familia, 10))
+                          fill=TEMA["texto"], font=(self.familia, tamanho_legenda))
             y += passo
 
     def limpar_resultado(self):
@@ -617,6 +717,7 @@ class AplicacaoRebalanceamento:
         self.resultado.limpar()
         self.modo_var.set("")
         self.detalhes_resultado_var.set("")
+        self._dados_grafico = ([], [])
         self.grafico.delete("all")
         self.atualizar_cartoes(None, None, None)
 
@@ -799,3 +900,5 @@ class AplicacaoRebalanceamento:
 
         except (ValueError, ZeroDivisionError) as erro:
             messagebox.showerror("Não foi possível calcular", str(erro), parent=self.root)
+
+
