@@ -1,4 +1,3 @@
-
 """Componentes reutilizáveis da interface Tkinter."""
 
 import tkinter as tk
@@ -6,6 +5,15 @@ from tkinter import ttk
 from tkinter import font as tkfont
 
 from app.theme import TEMA
+
+
+def escala(widget):
+    """Fator de escala da tela em relação a 96 DPI (1.0 = 100%, 1.5 = 150%...).
+
+    As fontes são dadas em pontos e já acompanham a escala do Tk. Este fator serve para
+    que as medidas dadas em pixels (ícones, margens, gráfico) acompanhem as fontes.
+    """
+    return max(1.0, widget.winfo_fpixels("1i") / 96.0)
 
 
 def escolher_familia(root):
@@ -18,6 +26,7 @@ def escolher_familia(root):
 
 def criar_icone(pai, tipo, tamanho=44):
     """Desenha pequenos ícones em um Canvas (não dependem de imagens nem de fontes)."""
+    tamanho = int(tamanho * escala(pai))
     c = tk.Canvas(pai, width=tamanho, height=tamanho, bg=pai.cget("bg"), highlightthickness=0, bd=0)
     k = tamanho / 48.0
     traco = max(2.0, 4 * k)
@@ -51,29 +60,36 @@ def criar_icone(pai, tipo, tamanho=44):
     return c
 
 class Painel(tk.Canvas):
-    """Painel com cantos arredondados. Crie os widgets dentro de `painel.corpo`."""
+    """Painel com cantos arredondados. Crie os widgets dentro de `painel.corpo`.
+
+    O painel sempre pede ao gerenciador de geometria o tamanho que o conteúdo precisa
+    (o seu tamanho mínimo). Com expandir=True o conteúdo também acompanha o painel quando
+    ele recebe mais espaço; com expandir=False o conteúdo mantém a sua altura natural.
+    """
 
     def __init__(self, pai, fundo, borda, raio=16, margem=14, expandir=False):
         super().__init__(pai, width=10, height=10, bg=pai.cget("bg"), highlightthickness=0, bd=0)
+        esc = escala(pai)
         self._fundo, self._borda = fundo, borda
-        self._raio, self._margem, self._expandir = raio, margem, expandir
+        self._raio, self._margem, self._expandir = int(raio * esc), int(margem * esc), expandir
         self.corpo = tk.Frame(self, bg=fundo)
-        self._janela = self.create_window(margem, margem, anchor="nw", window=self.corpo)
+        self._janela = self.create_window(self._margem, self._margem, anchor="nw", window=self.corpo)
         self.bind("<Configure>", self._redesenhar)
-        if not expandir:
-            # A altura do painel acompanha o conteúdo: medida uma vez depois que a janela
-            # é montada e de novo sempre que o conteúdo mudar de tamanho.
-            self.corpo.bind("<Configure>", self._ajustar_altura)
-            self.after(20, self._medir_inicial)
+        # O tamanho pedido é medido uma vez depois que a janela é montada
+        # e de novo sempre que o conteúdo mudar de tamanho.
+        self.corpo.bind("<Configure>", self._ajustar_tamanho)
+        self.after(20, self.medir)
 
-    def _medir_inicial(self):
-        self.update_idletasks()
-        self._ajustar_altura()
+    def medir(self):
+        """Atualiza o tamanho que o painel pede ao gerenciador de geometria."""
+        self.corpo.update_idletasks()
+        self._ajustar_tamanho()
 
-    def _ajustar_altura(self, _evento=None):
+    def _ajustar_tamanho(self, _evento=None):
+        largura = self.corpo.winfo_reqwidth() + 2 * self._margem
         altura = self.corpo.winfo_reqheight() + 2 * self._margem
-        if int(self.cget("height")) != altura:
-            self.configure(height=altura)
+        if int(self.cget("width")) != largura or int(self.cget("height")) != altura:
+            self.configure(width=largura, height=altura)
 
     def _redesenhar(self, evento):
         x1 = y1 = 1
@@ -105,17 +121,16 @@ class TabelaResultado(tk.Frame):
     def __init__(self, pai, familia):
         super().__init__(pai, bg=TEMA["painel"])
         self.familia = familia
+        # altura aproximada de uma linha (texto + pady + borda), para o tamanho mínimo da tabela
+        self._altura_linha = tkfont.Font(self, family=familia, size=10).metrics("linespace") + 12
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
         self.canvas = tk.Canvas(self, width=10, height=10, bg=TEMA["painel"], highlightthickness=0, bd=0)
         self.barra = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.barra_horizontal = ttk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
-        self.canvas.configure(yscrollcommand=self.barra.set, xscrollcommand=self.barra_horizontal.set)
+        self.canvas.configure(yscrollcommand=self.barra.set)
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.barra.grid(row=0, column=1, sticky="ns")
-        self.barra_horizontal.grid(row=1, column=0, sticky="ew")
-        self.barra_horizontal.grid_remove()
 
         self.interno = tk.Frame(self.canvas, bg=TEMA["painel"])
         self._janela = self.canvas.create_window(0, 0, anchor="nw", window=self.interno)
@@ -130,36 +145,36 @@ class TabelaResultado(tk.Frame):
         self.limpar()
 
     # ----- rolagem -----
+    def medir(self):
+        """Atualiza o tamanho pedido pela tabela (força a medição sem esperar eventos)."""
+        self.interno.update_idletasks()
+        self._ao_mudar_conteudo()
+
     def _ao_mudar_conteudo(self, _evento=None):
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        self._atualizar_barras()
+        # A tabela pede a largura que as colunas precisam (nada de texto cortado) e uma
+        # altura mínima de cabeçalho + 3 linhas; acima disso, rola por dentro.
+        self.canvas.configure(
+            scrollregion=self.canvas.bbox("all"),
+            width=self.interno.winfo_reqwidth(),
+            height=min(self.interno.winfo_reqheight(), 4 * self._altura_linha),
+        )
+        self._atualizar_barra()
 
     def _ao_mudar_canvas(self, evento):
-        # Preserva a largura natural das colunas. Se ela exceder a área visível,
-        # a barra horizontal permite acessar todas as células sem cortá-las.
-        largura_conteudo = max(evento.width, self.interno.winfo_reqwidth())
-        self.canvas.itemconfigure(self._janela, width=largura_conteudo)
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        self._atualizar_barras()
+        self.canvas.itemconfigure(self._janela, width=evento.width)
+        self._atualizar_barra()
 
-    def _atualizar_barras(self):
-        """Mostra as barras somente quando o conteúdo excede a área visível."""
+    def _atualizar_barra(self):
+        """Mostra a barra de rolagem só quando as linhas não cabem."""
         if self.interno.winfo_reqheight() > self.canvas.winfo_height():
             self.barra.grid()
         else:
             self.barra.grid_remove()
             self.canvas.yview_moveto(0)
 
-        if self.interno.winfo_reqwidth() > self.canvas.winfo_width():
-            self.barra_horizontal.grid()
-        else:
-            self.barra_horizontal.grid_remove()
-            self.canvas.xview_moveto(0)
-
     def _vincular_rolagem(self, widget):
         for evento in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
             widget.bind(evento, self._rolar)
-        widget.bind("<Shift-MouseWheel>", self._rolar_horizontal)
 
     def _rolar(self, evento):
         if not self.barra.winfo_ismapped():
@@ -167,17 +182,11 @@ class TabelaResultado(tk.Frame):
         direcao = -1 if (evento.num == 4 or evento.delta > 0) else 1
         self.canvas.yview_scroll(direcao * 2, "units")
 
-    def _rolar_horizontal(self, evento):
-        if not self.barra_horizontal.winfo_ismapped():
-            return
-        direcao = -1 if evento.delta > 0 else 1
-        self.canvas.xview_scroll(direcao * 2, "units")
-
     # ----- conteúdo -----
     def _celula(self, linha, coluna, texto, fundo, cor=None, negrito=False):
         rotulo = tk.Label(
             self.interno, text=texto, bg=fundo, fg=cor or TEMA["texto"],
-            anchor=self.ANCORAS[coluna], padx=8, pady=5,
+            anchor=self.ANCORAS[coluna], padx=14, pady=5,
             font=(self.familia, 10, "bold" if negrito else "normal"),
         )
         rotulo.grid(row=linha, column=coluna, sticky="nsew")
@@ -207,4 +216,3 @@ class TabelaResultado(tk.Frame):
                 self._celula(i, coluna, texto, fundo, cor)
         for coluna, texto in enumerate(total):
             self._celula(len(linhas) + 1, coluna, texto, TEMA["total"], negrito=True)
-
